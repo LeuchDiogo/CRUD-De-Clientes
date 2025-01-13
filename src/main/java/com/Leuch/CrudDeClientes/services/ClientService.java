@@ -3,12 +3,18 @@ package com.Leuch.CrudDeClientes.services;
 import com.Leuch.CrudDeClientes.Entities.Client;
 import com.Leuch.CrudDeClientes.dto.ClientDTO;
 import com.Leuch.CrudDeClientes.repositories.ClientRepository;
+import com.Leuch.CrudDeClientes.services.exceptions.DataBaseException;
+import com.Leuch.CrudDeClientes.services.exceptions.ResourceNotFoundException;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.util.Optional;
 
@@ -20,8 +26,8 @@ public class ClientService {
     @Transactional(readOnly = true)
     public ClientDTO findById(Long id)
     {
-        Optional<Client> result = repository.findById(id);
-        Client client = result.get();
+        Client client = repository.findById(id).orElseThrow(
+                () -> new ResourceNotFoundException(("Recurso não encontrado")));
         return new ClientDTO(client);
     }
 
@@ -33,24 +39,39 @@ public class ClientService {
 
     @Transactional
     public ClientDTO insert(ClientDTO dto){
-        Client entity = new Client();
-        copyDtoToEntity(dto, entity);
-        entity = repository.save(entity);
-         return new ClientDTO(entity);
+            Client entity = new Client();
+            copyDtoToEntity(dto, entity);
+            entity = repository.save(entity);
+            return new ClientDTO(entity);
     }
 
 
     @Transactional
     public ClientDTO update(Long id, ClientDTO dto){
-        Client entity = repository.getReferenceById(id);
-        copyDtoToEntity(dto, entity);
-        entity = repository.save(entity);
-        return new ClientDTO(entity);
+        try{
+            Client entity = repository.getReferenceById(id);
+            copyDtoToEntity(dto, entity);
+            entity = repository.save(entity);
+            return new ClientDTO(entity);
+        }
+        catch (EntityNotFoundException e)
+        {
+            throw new ResourceNotFoundException("Recurso não encontrado");
+        }
+
     }
 
-    @Transactional
-    public void delete(Long id){
-        repository.deleteById(id);
+    @Transactional(propagation = Propagation.SUPPORTS)
+    public void delete(Long id) {
+        if (!repository.existsById(id)) {
+            throw new ResourceNotFoundException("Recurso não encontrado");
+        }
+        try {
+            repository.deleteById(id);
+        }
+        catch (DataIntegrityViolationException e) {
+            throw new DataBaseException("Falha de integridade referencial");
+        }
     }
 
     private void copyDtoToEntity(ClientDTO dto, Client entity){
